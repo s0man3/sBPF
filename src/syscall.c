@@ -29,7 +29,7 @@ static int __sys_sbpf(int cmd, struct sbpf_attr __user * uattr, unsigned int siz
         }
 
         printk(KERN_INFO "In sbpf:\n"
-                         "sbpf_attr size: %lu"
+                         "sbpf_attr size: %lu\n"
                          "  insns(addr) : 0x%llx\n"
                          "  insn_len    : %u\n"
                          "  insn_cnt    : %u",
