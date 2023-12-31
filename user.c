@@ -18,11 +18,11 @@ int main() {
         ret = syscall(548, attr, sizeof(attr));
 
         printf("Argument:\n"
-               "  attr->insns = %llx/n"
-               "  attr->insn_len = %d"
-               "  attr->insn_cnt = %d"
-               " Return value: %d"
-               attr->insns, attr->insns_len,
+               "  attr->insns = %llx\n"
+               "  attr->insn_len = %u\n"
+               "  attr->insn_cnt = %u\n"
+               " Return value: %u\n",
+               attr->insns, attr->insn_len,
                attr->insn_cnt, ret);
 
         free(attr);
