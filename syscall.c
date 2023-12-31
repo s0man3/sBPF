@@ -2,7 +2,7 @@
 #include <linux/syscalls.h>
 #include <linux/moduleloader.h>
 #include <linux/errno.h>
-#include <asm-generic/page.h>
+#include <linux/slab.h>
 
 // TO DO: how to prevent double includes between syscall.c and sbpf.h ?
 
@@ -17,7 +17,7 @@ static int __sys_sbpf(int cmd, struct sbpf_attr __user * uattr, unsigned int siz
                 goto exit;
         }
 
-        attr = kmalloc(sizeof(struct sbpf_attr));
+        attr = kmalloc(sizeof(struct sbpf_attr), GFP_KERNEL);
         if (!attr)
                 goto exit;
 
@@ -29,7 +29,7 @@ static int __sys_sbpf(int cmd, struct sbpf_attr __user * uattr, unsigned int siz
         if (attr->insn_len > PAGE_SIZE)
                 goto err_attr;
 
-        prog = kmalloc(sizeof(struct sbpf));
+        prog = kmalloc(sizeof(struct sbpf_prog), GFP_KERNEL);
         if (!prog) 
                 goto err_attr;
 
@@ -53,5 +53,5 @@ exit:
 
 SYSCALL_DEFINE3(sbpf, int, cmd, struct sbpf_attr __user *, uattr, unsigned int, size)
 {
-        return __sys_sbpf(cmd, struct sbpf_attr __user * uattr, size);
+        return __sys_sbpf(cmd, uattr, size);
 }
