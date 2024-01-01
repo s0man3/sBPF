@@ -4,13 +4,18 @@
 #include <linux/errno.h>
 #include <linux/slab.h>
 #include <linux/printk.h>
+#include <linux/idr.h>
 
 // Syscall Number: 548 (defined in arch/x86/entry/syscalls/syscall_64.tbl)
+
+static DEFINE_SPINLOCK(prog_idr_lock);
+static DEFINE_IDR(prog_idr);
 
 static int sbpf_prog_load(union sbpf_attr *attr)
 {
         int err = 0;
         struct sbpf_prog *prog;
+        int id = 0;
 
         if (attr->insn_len > PAGE_SIZE) {
                 err = -EINVAL;
@@ -37,7 +42,18 @@ static int sbpf_prog_load(union sbpf_attr *attr)
         if (!prog->image) 
                 goto err_insns;
 
+        spin_lock_bh(&prog_idr_lock);
+        id = idr_alloc_cyclic(&prog_idr, prog, 1, INT_MAX, GFP_ATOMIC);
+        if (id > 0)
+                prog->id = id;
+        spin_unlock_bh(&prog_idr_lock);
 
+        if (id > 0) {
+                spin_lock_bh(&prog_idr_lock);
+                idr_remove(&prog_idr, id);
+                spin_unlock_bh(&prog_idr_lock);
+        }
+        
         module_memfree(prog->image);
         kfree(prog->insns);
         kfree(prog);

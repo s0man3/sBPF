@@ -5,6 +5,7 @@ struct sbpf_prog {
 	__u32	insn_len;
 	__u32	insn_cnt;
 	void	*image;
+	int id;
 };
 
 union sbpf_attr {
