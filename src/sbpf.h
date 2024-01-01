@@ -1,7 +1,15 @@
 #include <linux/types.h>
 
+struct sbpf_insn {
+	__u8	code;
+	__u8	dst_reg:4;
+	__u8	src_reg:4;
+	__s16	off;
+	__s16	imm;
+};
+
 struct sbpf_prog {
-	void	*insns;
+	struct sbpf_insn	*insns;
 	__u32	insn_len;
 	__u32	insn_cnt;
 	void	*image;
