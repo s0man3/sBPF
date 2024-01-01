@@ -5,8 +5,10 @@ struct sbpf_prog {
 	void *image;
 };
 
-struct sbpf_attr {
-	unsigned long long insns;
-	unsigned insn_len;
-	unsigned insn_cnt;
+union sbpf_attr {
+	struct {
+		unsigned long long insns;
+		unsigned insn_len;
+		unsigned insn_cnt;
+	};
 };
