@@ -1,11 +1,17 @@
 #include <linux/types.h>
 
+#define SBPF_MAX_INSN_SIZE	128
+#define SBPF_INSN_SAFETY	64
+
+#define SBPF_CALL		0x80
+#define SBPF_JMP		0x5
+
 struct sbpf_insn {
 	__u8	code;
 	__u8	dst_reg:4;
 	__u8	src_reg:4;
 	__s16	off;
-	__s16	imm;
+	__s32	imm;
 };
 
 struct sbpf_prog {

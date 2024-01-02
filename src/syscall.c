@@ -11,16 +11,83 @@
 static DEFINE_SPINLOCK(prog_idr_lock);
 static DEFINE_IDR(prog_idr);
 
+noinline u64 __sbpf_call_base(void)
+{
+        return 0;
+}
+
+
+static int emit_helper_addr(struct sbpf_insn *insn) {
+        const struct sbpf_func_proto *fn;
+        switch(insn->imm) {
+                case 0:
+                        fn = get_sbpf_func_proto(insn->imm);
+                        insn->imm = fn->func - __sbpf_call_base;
+                        break;
+        }
+        return -1;
+}
+
+static int do_verifier(struct sbpf_prog *prog) {
+        int insn_cnt = prog->insn_cnt;
+        struct sbpf_insn *insn = prog->insns;
+        int prog_len = 0;
+        int i, ret;
+
+        for (i = 0; i < insn_cnt; i++, insn++) {
+                switch(insn->code) {
+                        case SBPF_JMP | SBPF_CALL:
+                                if (insn->src_reg == 0) {
+                                        ret = emit_helper_addr(insn);
+                                        prog_len += 5;
+                                } else
+                                        ret = -1;
+                                break;
+                        default:
+                                ret = -1;
+                }
+                if (ret)
+                        break;
+                if (prog_len >= PAGE_SIZE) {
+                        ret = -1;
+                        break;
+                }
+        }
+        return ret;
+}
+
+static void emit_call(u8 *temp, __s32 imm) {
+        *temp = 0xE8;
+        temp += 1;
+        *(s32 *)temp = imm;
+        temp += 4;
+        return;
+}
+
+static int do_jit(struct sbpf_prog *prog) {
+        int insn_cnt = prog->insn_cnt;
+        struct sbpf_insn *insn = prog->insns;
+        u8 temp[SBPF_MAX_INSN_SIZE + SBPF_INSN_SAFETY];
+        int i = 0, err = 0;
+
+        for (i = 0; i < insn_cnt; i++, insn++) {
+                switch(insn->code) {
+                        case SBPF_JMP | SBPF_CALL:
+                                emit_call(temp, insn->imm);
+                                break;
+                }
+                if (err)
+                        break;
+        }
+
+        return err;
+}
+
 static int sbpf_prog_load(union sbpf_attr *attr)
 {
         int err = 0;
         struct sbpf_prog *prog;
         int id = 0;
-
-        if (attr->insn_len > PAGE_SIZE) {
-                err = -EINVAL;
-                goto exit;
-        }
 
         prog = kmalloc(sizeof(struct sbpf_prog), GFP_KERNEL);
         if (!prog) 
@@ -41,6 +108,14 @@ static int sbpf_prog_load(union sbpf_attr *attr)
         prog->image = module_alloc(PAGE_SIZE);
         if (!prog->image) 
                 goto err_insns;
+
+        err = do_verifier(prog);
+        err = err ?: do_jit(prog);
+
+        if(!err) {
+                err = -EFAULT;
+                goto err_insns;
+        }
 
         spin_lock_bh(&prog_idr_lock);
         id = idr_alloc_cyclic(&prog_idr, prog, 1, INT_MAX, GFP_ATOMIC);
