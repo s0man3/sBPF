@@ -68,16 +68,21 @@ static int do_jit(struct sbpf_prog *prog) {
         int insn_cnt = prog->insn_cnt;
         struct sbpf_insn *insn = prog->insns;
         u8 temp[SBPF_MAX_INSN_SIZE + SBPF_INSN_SAFETY];
+        int templen, ilen = 0;
         int i = 0, err = 0;
 
         for (i = 0; i < insn_cnt; i++, insn++) {
                 switch(insn->code) {
                         case SBPF_JMP | SBPF_CALL:
                                 emit_call(temp, insn->imm);
+                                templen += 5;
                                 break;
                 }
                 if (err)
                         break;
+                memcpy(prog->image + ilen, temp, templen);
+                ilen += templen;
+                templen = 0;
         }
 
         return err;
