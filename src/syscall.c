@@ -23,12 +23,12 @@ static int emit_helper_addr(struct sbpf_insn *insn) {
                 case 0:
                         fn = get_sbpf_func_proto(insn->imm);
                         insn->imm = fn->func - __sbpf_call_base;
-                        break;
+                        return 0;
         }
         return -1;
 }
 
-static int do_verifier(struct sbpf_prog *prog) {
+static int do_check(struct sbpf_prog *prog) {
         int insn_cnt = prog->insn_cnt;
         struct sbpf_insn *insn = prog->insns;
         int prog_len = 0;
@@ -70,6 +70,7 @@ static int do_jit(struct sbpf_prog *prog) {
         u8 temp[SBPF_MAX_INSN_SIZE + SBPF_INSN_SAFETY];
         int templen, ilen = 0;
         int i = 0, err = 0;
+        prog->im_len = 0;
 
         for (i = 0; i < insn_cnt; i++, insn++) {
                 switch(insn->code) {
@@ -82,8 +83,11 @@ static int do_jit(struct sbpf_prog *prog) {
                         break;
                 memcpy(prog->image + ilen, temp, templen);
                 ilen += templen;
+                prog->im_len += templen;
                 templen = 0;
         }
+
+        printk(KERN_INFO "sBPF iterator : %d", i);
 
         return err;
 }
@@ -104,6 +108,7 @@ static int sbpf_prog_load(union sbpf_attr *attr)
 
         prog->insn_len = attr->insn_len;
         prog->insn_cnt = attr->insn_cnt;
+        prog->im_len = 0;
 
         if (copy_from_user(prog->insns, (void*)attr->insns, attr->insn_len)) {
                 err = -EFAULT;
@@ -114,10 +119,10 @@ static int sbpf_prog_load(union sbpf_attr *attr)
         if (!prog->image) 
                 goto err_insns;
 
-        err = do_verifier(prog);
+        err = do_check(prog);
         err = err ?: do_jit(prog);
 
-        if(!err) {
+        if(err) {
                 err = -EFAULT;
                 goto err_insns;
         }
@@ -127,6 +132,11 @@ static int sbpf_prog_load(union sbpf_attr *attr)
         if (id > 0)
                 prog->id = id;
         spin_unlock_bh(&prog_idr_lock);
+
+        printk(KERN_INFO "sBPF loaded:"
+                         "  program id : %d\n"
+                         "  jit code length : %d\n",
+                         prog->id, prog->im_len);
 
         if (id > 0) {
                 spin_lock_bh(&prog_idr_lock);

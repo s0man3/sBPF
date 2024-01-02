@@ -19,6 +19,7 @@ struct sbpf_prog {
 	__u32	insn_len;
 	__u32	insn_cnt;
 	void	*image;
+	__s32	im_len;
 	int id;
 };
 

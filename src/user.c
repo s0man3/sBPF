@@ -14,11 +14,12 @@ int main() {
         void *stuff;
         attr = malloc(sizeof(union sbpf_attr));
 
-        attr->insns = (long long unsigned)malloc(0x20);
+        stuff = malloc(0x20);
         memcpy(stuff, call_bytecode, 0x8);
         memcpy(stuff + 0x8, call_bytecode, 0x8);
         memcpy(stuff + 0x10, call_bytecode, 0x8);
         memcpy(stuff + 0x18, call_bytecode, 0x8);
+        attr->insns = (long long unsigned)stuff;
         attr->insn_len = 0x20;
         attr->insn_cnt = 0x20 / 0x8;
 
@@ -33,8 +34,8 @@ int main() {
                sizeof(union sbpf_attr), attr->insns, attr->insn_len,
                attr->insn_cnt, ret);
 
-        free(attr);
         free(stuff);
+        free(attr);
 
         return 0;
 }
