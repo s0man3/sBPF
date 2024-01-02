@@ -87,8 +87,6 @@ static int do_jit(struct sbpf_prog *prog) {
                 templen = 0;
         }
 
-        printk(KERN_INFO "sBPF iterator : %d", i);
-
         return err;
 }
 
@@ -133,10 +131,11 @@ static int sbpf_prog_load(union sbpf_attr *attr)
                 prog->id = id;
         spin_unlock_bh(&prog_idr_lock);
 
-        printk(KERN_INFO "sBPF loaded:"
-                         "  program id : %d\n"
-                         "  jit code length : %d\n",
-                         prog->id, prog->im_len);
+        printk(KERN_INFO "sBPF loaded\n"
+                         "  program id  : %d\n"
+                         "  jit code length : %d\n"
+                         "  loaded at : %llx",
+                         prog->id, prog->im_len, (u64)prog->image);
 
         if (id > 0) {
                 spin_lock_bh(&prog_idr_lock);
