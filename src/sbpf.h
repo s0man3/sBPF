@@ -28,4 +28,4 @@ struct sbpf_func_proto {
 	u64 (*func)(void);
 };
 
-extern const struct sbpf_func_proto * get_sbpf_func_proto(__s16 id);
+extern const struct sbpf_func_proto * get_sbpf_func_proto(__s32 id);
