@@ -25,7 +25,7 @@ union sbpf_attr {
 };
 
 struct sbpf_func_proto {
-	u64 *func;
+	u64 (*func)(void);
 };
 
-extern struct sbpf_func_proto * get_sbpf_func_proto(__s16 id);
+extern const struct sbpf_func_proto * get_sbpf_func_proto(__s16 id);
