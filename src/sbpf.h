@@ -23,3 +23,9 @@ union sbpf_attr {
 		__u32	insn_cnt;
 	};
 };
+
+struct sbpf_func_proto {
+	u64 *func;
+};
+
+extern struct sbpf_func_proto * get_sbpf_func_proto(__s16 id);
