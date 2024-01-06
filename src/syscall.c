@@ -5,6 +5,7 @@
 #include <linux/slab.h>
 #include <linux/printk.h>
 #include <linux/idr.h>
+#include <linux/kprobes.h>
 
 // Syscall Number: 548 (defined in arch/x86/entry/syscalls/syscall_64.tbl)
 
@@ -16,8 +17,50 @@ noinline u64 __sbpf_call_base(void)
         return 0;
 }
 
+static int sbpf_attach(union sbpf_attr *attr)
+{
+        struct sbpf_prog *prog;
+        struct kprobe *kp;
+        char *temp;
+        int err;
 
-static int emit_helper_addr(struct sbpf_insn *insn) {
+        prog = idr_find(&prog_idr, attr->id);
+
+        if (!prog) {
+                err = -EINVAL;
+                goto exit;
+        }
+
+        kp = kmalloc(sizeof(struct kprobe), GFP_KERNEL);
+        if (!kp)
+                goto exit;
+
+        kp->pre_handler = prog->image;
+        kp->post_handler = NULL;
+        temp = kmalloc(0x20, GFP_KERNEL);
+        if (!temp) 
+                goto err_kp;
+        memcpy(temp, attr->kprobe_name, 0x20);
+        kp->symbol_name = temp;
+        kp->flags = 0;
+
+        register_kprobe(kp);
+
+        kfree(kp->symbol_name);
+        kfree(kp);
+
+        return 0;
+
+err_kp:
+        kfree(kp);
+exit:
+        if (err == 0)
+                err = -ENOMEM;
+        return err;
+}
+
+
+static int replace_helper(struct sbpf_insn *insn) {
         const struct sbpf_func_proto *fn;
         switch(insn->imm) {
                 case 0:
@@ -38,7 +81,7 @@ static int do_check(struct sbpf_prog *prog) {
                 switch(insn->code) {
                         case SBPF_JMP | SBPF_CALL:
                                 if (insn->src_reg == 0) {
-                                        ret = emit_helper_addr(insn);
+                                        ret = replace_helper(insn);
                                         prog_len += 5;
                                 } else
                                         ret = -1;
@@ -53,7 +96,18 @@ static int do_check(struct sbpf_prog *prog) {
                         break;
                 }
         }
+
+        prog_len += 1;
+        if (prog_len >= PAGE_SIZE)
+                ret = -1;
+
         return ret;
+}
+
+static void emit_ret(u8 *temp) {
+        *temp = 0xC3;
+        temp += 1;
+        return;
 }
 
 static void emit_call(u8 *temp, __s32 imm) {
@@ -86,6 +140,11 @@ static int do_jit(struct sbpf_prog *prog) {
                 prog->im_len += templen;
                 templen = 0;
         }
+
+        emit_ret(temp);
+        templen = 1;
+        memcpy(prog->image +  ilen, temp, templen);
+        prog->im_len += templen;
 
         return err;
 }
@@ -159,6 +218,14 @@ exit:
         return err;
 }
 
+static int sbpf_prog_unload(union sbpf_attr *attr) {
+        return 0;
+}
+
+static int sbpf_detach(union sbpf_attr *attr) {
+        return 0;
+}
+
 
 static int __sys_sbpf(int cmd, union sbpf_attr __user * uattr, unsigned int size)
 {
@@ -190,6 +257,15 @@ static int __sys_sbpf(int cmd, union sbpf_attr __user * uattr, unsigned int size
         switch(cmd) {
                 case 0:
                         err = sbpf_prog_load(attr);
+                        break;
+                case 1:
+                        err = sbpf_attach(attr);
+                        break;
+                case 2:
+                        err = sbpf_prog_unload(attr);
+                        break;
+                case 3:
+                        err = sbpf_detach(attr);
                         break;
         }
 

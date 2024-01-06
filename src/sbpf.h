@@ -6,6 +6,8 @@
 #define SBPF_CALL		0x80
 #define SBPF_JMP		0x5
 
+#define SBPF_NAME_LIMIT	0x20
+
 struct sbpf_insn {
 	__u8	code;
 	__u8	dst_reg:4;
@@ -28,6 +30,11 @@ union sbpf_attr {
 		__u64	insns;
 		__u32	insn_len;
 		__u32	insn_cnt;
+	};
+
+	struct {
+		int	id;
+		char kprobe_name[SBPF_NAME_LIMIT];
 	};
 };
 
