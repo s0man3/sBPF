@@ -9,9 +9,11 @@
 static char call_bytecode[] = "\x85\x00\x00\x00\x00\x00\x00\x00";
 
 int main() {
+        int i;
         int ret;
         union sbpf_attr *attr;
         void *stuff;
+        char *uim;
         attr = malloc(sizeof(union sbpf_attr));
 
         stuff = malloc(0x20);
@@ -34,6 +36,14 @@ int main() {
                " Return value: %d\n",
                sizeof(union sbpf_attr), attr->insns, attr->insn_len,
                attr->insn_cnt, ret);
+        
+        uim = (char*)attr->uimage;
+        printf("Binary: [");
+        for (i=0;i<0x40;i++) {
+                printf("%02X", *(unsigned char*)(uim + i));
+        }
+        printf("]\n");
+        printf("i:20 %02X\n", *(unsigned char*)(attr->uimage + 20));
 
         free(attr->uimage);
         free(stuff);

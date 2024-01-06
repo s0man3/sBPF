@@ -5,7 +5,6 @@
 #include <linux/slab.h>
 #include <linux/printk.h>
 #include <linux/idr.h>
-#include <linux/kprobes.h>
 
 // Syscall Number: 548 (defined in arch/x86/entry/syscalls/syscall_64.tbl)
 
@@ -25,7 +24,6 @@ static int sbpf_attach(union sbpf_attr *attr)
         int err;
 
         prog = idr_find(&prog_idr, attr->id);
-
         if (!prog) {
                 err = -EINVAL;
                 goto exit;
@@ -43,6 +41,8 @@ static int sbpf_attach(union sbpf_attr *attr)
         memcpy(temp, attr->kprobe_name, 0x20);
         kp->symbol_name = temp;
         kp->flags = 0;
+
+        prog->kp = kp;
 
         register_kprobe(kp);
 
@@ -122,6 +122,7 @@ static int do_jit(struct sbpf_prog *prog) {
         int insn_cnt = prog->insn_cnt;
         struct sbpf_insn *insn = prog->insns;
         u8 temp[SBPF_MAX_INSN_SIZE + SBPF_INSN_SAFETY];
+        u8 *head;
         int templen, ilen = 0;
         int i = 0, err = 0;
         prog->im_len = 0;
@@ -129,7 +130,7 @@ static int do_jit(struct sbpf_prog *prog) {
         for (i = 0; i < insn_cnt; i++, insn++) {
                 switch(insn->code) {
                         case SBPF_JMP | SBPF_CALL:
-                                emit_call(temp, insn->imm);
+                                emit_call(head, insn->imm);
                                 templen += 5;
                                 break;
                 }
@@ -139,6 +140,7 @@ static int do_jit(struct sbpf_prog *prog) {
                 ilen += templen;
                 prog->im_len += templen;
                 templen = 0;
+                head = temp;
         }
 
         emit_ret(temp);
@@ -175,6 +177,8 @@ static int sbpf_prog_load(union sbpf_attr *attr)
         prog->image = module_alloc(PAGE_SIZE);
         if (!prog->image) 
                 goto err_insns;
+
+        prog->kp = NULL;
 
         err = do_check(prog);
         err = err ?: do_jit(prog);
@@ -224,11 +228,52 @@ exit:
 }
 
 static int sbpf_prog_unload(union sbpf_attr *attr) {
+        struct sbpf_prog *prog;
+        int err = 0;
+
+        prog = idr_find(&prog_idr, attr->id);
+        if (!prog) {
+                err = -EINVAL;
+                goto exit;
+        }
+
+        spin_lock_bh(&prog_idr_lock);
+        idr_remove(&prog_idr, prog->id);
+        spin_unlock_bh(&prog_idr_lock);
+
+        if (!prog->kp) {
+        }
+
+        module_memfree(prog->image);
+        kfree(prog->insns);
+        kfree(prog);
+
         return 0;
+exit:
+        return err;
 }
 
 static int sbpf_detach(union sbpf_attr *attr) {
+        struct sbpf_prog *prog;
+        int err = 0;
+
+        prog = idr_find(&prog_idr, attr->id);
+        if (!prog) {
+                err = -EINVAL;
+                goto exit;
+        }
+
+        if (!prog->kp) {
+                err = -EINVAL;
+                goto exit;
+        }
+
+        unregister_kprobe(prog->kp);
+        prog->kp = NULL;
+
         return 0;
+exit:
+        return err;
 }
 
 
@@ -236,11 +281,6 @@ static int __sys_sbpf(int cmd, union sbpf_attr __user * uattr, unsigned int size
 {
         int err = 0;
         union sbpf_attr *attr;
-
-        if (size != sizeof(union sbpf_attr)) {
-                err = -EINVAL;
-                goto exit;
-        }
 
         attr = kmalloc(sizeof(union sbpf_attr), GFP_KERNEL);
         if (!attr)

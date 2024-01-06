@@ -1,4 +1,5 @@
 #include <linux/types.h>
+#include <linux/kprobes.h>
 
 #define SBPF_MAX_INSN_SIZE	128
 #define SBPF_INSN_SAFETY	64
@@ -22,6 +23,7 @@ struct sbpf_prog {
 	__u32	insn_cnt;
 	void	*image;
 	__s32	im_len;
+	struct kprobe *kp;
 	int id;
 };
 
