@@ -30,6 +30,7 @@ union sbpf_attr {
 		__u64	insns;
 		__u32	insn_len;
 		__u32	insn_cnt;
+		__u8	*uimage;
 	};
 
 	struct {

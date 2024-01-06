@@ -196,6 +196,11 @@ static int sbpf_prog_load(union sbpf_attr *attr)
                          "  loaded at : %llx",
                          prog->id, prog->im_len, (u64)prog->image);
 
+        if (copy_to_user(attr->uimage, prog->image, prog->im_len)) {
+                err = -EFAULT;
+                goto err_insns;
+        }
+
         if (id > 0) {
                 spin_lock_bh(&prog_idr_lock);
                 idr_remove(&prog_idr, id);

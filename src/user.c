@@ -22,6 +22,7 @@ int main() {
         attr->insns = (long long unsigned)stuff;
         attr->insn_len = 0x20;
         attr->insn_cnt = 0x20 / 0x8;
+        attr->uimage = malloc(0x1000);
 
         ret = syscall(548, 0, attr, sizeof(union sbpf_attr));
 
@@ -34,6 +35,7 @@ int main() {
                sizeof(union sbpf_attr), attr->insns, attr->insn_len,
                attr->insn_cnt, ret);
 
+        free(attr->uimage);
         free(stuff);
         free(attr);
 
