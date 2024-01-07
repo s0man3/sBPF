@@ -4,6 +4,11 @@ tiny Selfmade BPF, supporting calls for helper fuctions.
 
 git clone linux kernel and checkout to your convinience.
 ```
+write KERNEL path to Makefile.
+make
+```
+or
+```
 mkdir <KERNEL>/sbpf
 cp src/syscall.c src/helpers.c Kbuild <KENREL>/sbpf
 cp src/sbpf.h <KERNEL>/include/linux
