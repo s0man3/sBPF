@@ -21,7 +21,7 @@ struct sbpf_prog {
 	struct sbpf_insn	*insns;
 	__u32	insn_len;
 	__u32	insn_cnt;
-	void	*image;
+	__u8      *image;
 	__s32	im_len;
 	struct kprobe *kp;
 	int id;
@@ -37,7 +37,7 @@ union sbpf_attr {
 
 	struct {
 		int	id;
-		char kprobe_name[SBPF_NAME_LIMIT];
+		char    kprobe_name[SBPF_NAME_LIMIT];
 	};
 };
 

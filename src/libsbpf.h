@@ -14,4 +14,9 @@ union sbpf_attr {
 		unsigned insn_cnt;
 		unsigned *uimage;
 	};
+
+        struct {
+                int id;
+                char kprobe_name[0x20];
+        };
 };

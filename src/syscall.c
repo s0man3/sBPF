@@ -29,28 +29,32 @@ static int sbpf_attach(union sbpf_attr *attr)
                 goto exit;
         }
 
-        kp = kmalloc(sizeof(struct kprobe), GFP_KERNEL);
+        kp = kzalloc(sizeof(struct kprobe), GFP_KERNEL);
         if (!kp)
                 goto exit;
 
-        kp->pre_handler = prog->image;
-        kp->post_handler = NULL;
-        temp = kmalloc(0x20, GFP_KERNEL);
+        kp->pre_handler = (void*)prog->image;
+
+        temp = kzalloc(0x20, GFP_KERNEL);
         if (!temp) 
                 goto err_kp;
-        memcpy(temp, attr->kprobe_name, 0x20);
+        strlcpy(temp, attr->kprobe_name, 0x20);
+
         kp->symbol_name = temp;
-        kp->flags = 0;
 
         prog->kp = kp;
 
-        register_kprobe(kp);
+        err = register_kprobe(kp);
+        if (err < 0) {
+                printk(KERN_ERR "sbpf:register_kprobe failed");
+                prog->kp = NULL;
+                goto err_sym;
+        }
 
+        return err;
+
+err_sym:
         kfree(kp->symbol_name);
-        kfree(kp);
-
-        return 0;
-
 err_kp:
         kfree(kp);
 exit:
@@ -59,6 +63,34 @@ exit:
         return err;
 }
 
+static int sbpf_detach(union sbpf_attr *attr) {
+        struct sbpf_prog *prog;
+        struct kprobe *kp;
+        int err = 0;
+
+        prog = idr_find(&prog_idr, attr->id);
+        if (!prog) {
+                err = -EINVAL;
+                goto exit;
+        }
+
+        kp = prog->kp;
+
+        if (!kp) {
+                err = -EINVAL;
+                goto exit;
+        }
+
+        unregister_kprobe(kp);
+        kfree(kp->symbol_name);
+        kfree(kp);
+
+        prog->kp = NULL;
+
+        return 0;
+exit:
+        return err;
+}
 
 static int replace_helper(struct sbpf_insn *insn) {
         const struct sbpf_func_proto *fn;
@@ -110,10 +142,10 @@ static void emit_ret(u8 *temp) {
         return;
 }
 
-static void emit_call(u8 *temp, __s32 imm) {
+static void emit_call(u8 *temp, u8 *func, u8 *addr) {
         *temp = 0xE8;
         temp += 1;
-        *(s32 *)temp = imm;
+        *(s32 *)temp = (s32)(func - addr - 5);
         temp += 4;
         return;
 }
@@ -128,9 +160,11 @@ static int do_jit(struct sbpf_prog *prog) {
         prog->im_len = 0;
 
         for (i = 0; i < insn_cnt; i++, insn++) {
+                u8 *func;
                 switch(insn->code) {
                         case SBPF_JMP | SBPF_CALL:
-                                emit_call(head, insn->imm);
+                                func = (u8 *) __sbpf_call_base + insn->imm;
+                                emit_call(head, func, prog->image + ilen);
                                 templen += 5;
                                 break;
                 }
@@ -185,14 +219,17 @@ static int sbpf_prog_load(union sbpf_attr *attr)
 
         if(err) {
                 err = -EFAULT;
-                goto err_insns;
+                goto err_module;
         }
 
         spin_lock_bh(&prog_idr_lock);
         id = idr_alloc_cyclic(&prog_idr, prog, 1, INT_MAX, GFP_ATOMIC);
-        if (id > 0)
-                prog->id = id;
+        prog->id = id;
         spin_unlock_bh(&prog_idr_lock);
+        if (id < 0) {
+                err = -EFAULT;
+                goto err_module;
+        }
 
         printk(KERN_INFO "sBPF loaded\n"
                          "  program id  : %d\n"
@@ -202,21 +239,13 @@ static int sbpf_prog_load(union sbpf_attr *attr)
 
         if (copy_to_user(attr->uimage, prog->image, prog->im_len)) {
                 err = -EFAULT;
-                goto err_insns;
+                goto err_module;
         }
-
-        if (id > 0) {
-                spin_lock_bh(&prog_idr_lock);
-                idr_remove(&prog_idr, id);
-                spin_unlock_bh(&prog_idr_lock);
-        }
-        
-        module_memfree(prog->image);
-        kfree(prog->insns);
-        kfree(prog);
 
         return 0;
 
+err_module:
+        module_memfree(prog->image);
 err_insns:
         kfree(prog->insns);
 err_prog:
@@ -237,45 +266,24 @@ static int sbpf_prog_unload(union sbpf_attr *attr) {
                 goto exit;
         }
 
+        if (!prog->kp) {
+                sbpf_detach(attr);
+        }
+
         spin_lock_bh(&prog_idr_lock);
         idr_remove(&prog_idr, prog->id);
         spin_unlock_bh(&prog_idr_lock);
-
-        if (!prog->kp) {
-        }
 
         module_memfree(prog->image);
         kfree(prog->insns);
         kfree(prog);
 
-        return 0;
-exit:
-        return err;
-}
-
-static int sbpf_detach(union sbpf_attr *attr) {
-        struct sbpf_prog *prog;
-        int err = 0;
-
-        prog = idr_find(&prog_idr, attr->id);
-        if (!prog) {
-                err = -EINVAL;
-                goto exit;
-        }
-
-        if (!prog->kp) {
-                err = -EINVAL;
-                goto exit;
-        }
-
-        unregister_kprobe(prog->kp);
-        prog->kp = NULL;
+        printk(KERN_INFO "sbpf: successfully unloaded");
 
         return 0;
 exit:
         return err;
 }
-
 
 static int __sys_sbpf(int cmd, union sbpf_attr __user * uattr, unsigned int size)
 {
@@ -292,12 +300,23 @@ static int __sys_sbpf(int cmd, union sbpf_attr __user * uattr, unsigned int size
                 goto err_attr;
         }
 
-        printk(KERN_INFO "In sbpf:\n"
-                         "union sbpf_attr size: %lu\n"
-                         "  insns(addr) : 0x%llx\n"
-                         "  insn_len    : %u\n"
-                         "  insn_cnt    : %u",
-                         sizeof(union sbpf_attr), attr->insns, attr->insn_len, attr->insn_cnt);
+        if (cmd == 0)
+                printk(KERN_INFO "In sbpf:\n"
+                                 "cmd : %d\n"
+                                 "union sbpf_attr size: %lu\n"
+                                 "  insns(addr) : 0x%llx\n"
+                                 "  insn_len    : %u\n"
+                                 "  insn_cnt    : %u",
+                                 cmd, sizeof(union sbpf_attr), attr->insns, attr->insn_len, attr->insn_cnt);
+        else if (cmd == 1)
+                printk(KERN_INFO "In sbpf:\n"
+                                 "cmd : %d\n"
+                                 "  id  : %d\n"
+                                 "  kprobe_name : %s",
+                                 cmd, attr->id, attr->kprobe_name);
+        else
+                printk(KERN_INFO "In sbpf:\n"
+                                 "cmd : %d", cmd);
 
         switch(cmd) {
                 case 0:

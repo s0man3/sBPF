@@ -14,8 +14,9 @@ int main() {
         union sbpf_attr *attr;
         void *stuff;
         char *uim;
-        attr = malloc(sizeof(union sbpf_attr));
 
+// --- Loading -------------------------------------------------------
+        attr = malloc(sizeof(union sbpf_attr));
         stuff = malloc(0x20);
         memcpy(stuff, call_bytecode, 0x8);
         memcpy(stuff + 0x8, call_bytecode, 0x8);
@@ -43,11 +44,28 @@ int main() {
                 printf("%02X", *(unsigned char*)(uim + i));
         }
         printf("]\n");
-        printf("i:20 %02X\n", *(unsigned char*)(attr->uimage + 20));
-
         free(attr->uimage);
         free(stuff);
         free(attr);
+// -------------------------------------------------------------------
+
+// --- Ataching ------------------------------------------------------
+        attr = malloc(sizeof(union sbpf_attr));
+        attr->id = 1;
+        strcpy(attr->kprobe_name,"do_sys_openat2");
+        ret = syscall(548, 1, attr, sizeof(union sbpf_attr));
+        printf("Attach: ret = %d\n", ret);
+        free(attr);
+        return 0;
+// -------------------------------------------------------------------
+
+// --- Unloading ------------------------------------------------------
+//      attr = malloc(sizeof(union sbpf_attr));
+//      attr->id = 1;
+//      ret = syscall(548, 2, attr, sizeof(union sbpf_attr));
+//      printf("Unload: ret = %d\n", ret);
+//      free(attr);
+// -------------------------------------------------------------------
 
         return 0;
 }

@@ -1,10 +1,13 @@
 #include <linux/sbpf.h>
 #include <linux/types.h>
 #include <linux/sched.h>
+#include <linux/printk.h>
 
 static u64 sbpf_get_current_pid_tgid(void)
 {
         struct task_struct *task = current;
+
+        printk(KERN_INFO "SBPF: sbpf_get_current_pid_tgid");
 
         if (unlikely(!task))
                 return -EINVAL;
