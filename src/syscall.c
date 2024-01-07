@@ -5,6 +5,7 @@
 #include <linux/slab.h>
 #include <linux/printk.h>
 #include <linux/idr.h>
+#include <linux/set_memory.h>
 
 // Syscall Number: 548 (defined in arch/x86/entry/syscalls/syscall_64.tbl)
 
@@ -130,6 +131,7 @@ static int do_check(struct sbpf_prog *prog) {
         }
 
         prog_len += 1;
+        prog_len += 2;
         if (prog_len >= PAGE_SIZE)
                 ret = -1;
 
@@ -149,6 +151,15 @@ static void emit_call(u8 *temp, u8 *func, u8 *addr) {
         temp += 4;
         return;
 }
+
+static void emit_xor_rax(u8 *temp) {
+        *temp = 0x31;
+        temp += 1;
+        *temp = 0xC0;
+        temp += 1;
+        return;
+}
+
 
 static int do_jit(struct sbpf_prog *prog) {
         int insn_cnt = prog->insn_cnt;
@@ -177,7 +188,16 @@ static int do_jit(struct sbpf_prog *prog) {
                 head = temp;
         }
 
-        emit_ret(temp);
+        emit_xor_rax(head);
+        templen = 2;
+        memcpy(prog->image + ilen, temp, templen);
+        ilen += templen;
+        prog->im_len += templen;
+
+        templen = 0;
+        head = temp;
+
+        emit_ret(head);
         templen = 1;
         memcpy(prog->image +  ilen, temp, templen);
         prog->im_len += templen;
@@ -221,6 +241,8 @@ static int sbpf_prog_load(union sbpf_attr *attr)
                 err = -EFAULT;
                 goto err_module;
         }
+
+        set_memory_x((u64)prog->image, 1);
 
         spin_lock_bh(&prog_idr_lock);
         id = idr_alloc_cyclic(&prog_idr, prog, 1, INT_MAX, GFP_ATOMIC);
