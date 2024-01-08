@@ -19,6 +19,7 @@ echo "obj-y += sbpf/" >> Kbuild
 make menuconfig (x86_64_defconfig etc)
 make -j$(nproc)
 ```
+If syscall interfaces differ from v6.6.9, edit syscall_64.tbl and syscalls.h mannually.
 
 # Run
 ```
