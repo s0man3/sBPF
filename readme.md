@@ -2,7 +2,7 @@ tiny Selfmade BPF, supporting calls for helper fuctions.
 
 # Installation
 
-git clone linux kernel and checkout to your convinience.
+git clone linux kernel and checkout to your convenience.
 ```
 write KERNEL path to Makefile.
 make
