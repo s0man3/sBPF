@@ -9,6 +9,10 @@
 
 #define SBPF_NAME_LIMIT	0x20
 
+struct sbpf_map_ops {
+	struct sbpf_map *(*map_alloc)(union sbpf_attr *attr);
+}
+
 struct sbpf_insn {
 	__u8	code;
 	__u8	dst_reg:4;
@@ -17,15 +21,10 @@ struct sbpf_insn {
 	__s32	imm;
 };
 
-struct sbpf_prog {
-	struct sbpf_insn	*insns;
-	__u32	insn_len;
-	__u32	insn_cnt;
-	__u8      *image;
-	__s32	im_len;
-	struct kprobe *kp;
-	int id;
-};
+struct sbpf_map {
+	struct sbpf_map_ops *ops;
+	int fd;
+}
 
 union sbpf_attr {
 	struct {
@@ -40,6 +39,17 @@ union sbpf_attr {
 		char    kprobe_name[SBPF_NAME_LIMIT];
 	};
 };
+
+struct sbpf_prog {
+	struct sbpf_insn	*insns;
+	__u32	insn_len;
+	__u32	insn_cnt;
+	__u8      *image;
+	__s32	im_len;
+	struct kprobe *kp;
+	int id;
+};
+
 
 struct sbpf_func_proto {
 	u64 (*func)(void);
